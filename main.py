@@ -147,7 +147,7 @@ async def send_post_to_user_chat(context: ContextTypes.DEFAULT_TYPE, chat_id, po
 
 # --- Основна функція ---
 def main():
-    token = "ВАШ_ТОКЕН_БОТА"
+    token = "8142345174:AAFd3Nw40QjNLcr2dc3C0LI6_g7DBmCdOZ4"
     app = ApplicationBuilder().token(token).build()
 
     conv_handler = ConversationHandler(
