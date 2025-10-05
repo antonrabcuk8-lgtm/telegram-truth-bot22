@@ -1,6 +1,8 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackQueryHandler, CallbackContext
 import copy
+from apscheduler.schedulers.background import BackgroundScheduler
+from pytz import timezone
 
 # --- Зберігання стану користувачів та постів ---
 user_data = {}
@@ -8,6 +10,10 @@ scheduled_posts = []
 posted_messages = {}  # ключ: message_id, значення: {"truth_text":..., "false_text":..., "question":..., "photo":...}
 
 MAX_ALERT_LENGTH = 200  # обмеження Telegram для show_alert
+
+# --- Ініціалізація планувальника ---
+scheduler = BackgroundScheduler(timezone=timezone('Europe/Kiev'))
+scheduler.start()
 
 # --- Команди ---
 def start(update: Update, context: CallbackContext):
@@ -61,7 +67,6 @@ def text_handler(update: Update, context: CallbackContext):
     elif step == "false_text":
         user_data[chat_id]["false_text"] = text
         user_data[chat_id]["step"] = None
-        # Кнопки для публікації або відкладання
         keyboard = [
             [InlineKeyboardButton("Публікувати зараз", callback_data="publish_now")],
             [InlineKeyboardButton("Відкласти публікацію", callback_data="schedule_post")]
@@ -79,21 +84,18 @@ def photo_or_text_handler(update: Update, context: CallbackContext):
 # --- Обробка кнопок ---
 def button(update: Update, context: CallbackContext):
     query = update.callback_query
-    query.answer()  # завжди відповідаємо callback, щоб зник "loading"
+    query.answer()
 
-    # --- Кнопки в каналі ---
     if query.data in ["truth", "false"]:
         msg_id = query.message.message_id
         if msg_id in posted_messages:
             text = posted_messages[msg_id]["truth_text"] if query.data == "truth" else posted_messages[msg_id]["false_text"]
-            # обрізаємо текст до 200 символів
             if len(text) > MAX_ALERT_LENGTH:
                 text = text[:MAX_ALERT_LENGTH-3] + "..."
             query.answer(text=text, show_alert=True)
         else:
             query.answer(text="✅ Правда" if query.data=="truth" else "❌ Брехня", show_alert=True)
 
-    # --- Кнопки для публікації у приваті ---
     elif query.data == "publish_now":
         chat_id = query.message.chat.id
         post_data = user_data.get(chat_id)
@@ -124,7 +126,6 @@ def send_post_to_channel(context: CallbackContext, post_data):
     else:
         msg = context.bot.send_message(chat_id=channel_id, text=post_data["question"], reply_markup=reply_markup)
 
-    # зберігаємо текст для кнопок
     posted_messages[msg.message_id] = {
         "truth_text": post_data.get("truth_text", "✅ Правда"),
         "false_text": post_data.get("false_text", "❌ Брехня"),
