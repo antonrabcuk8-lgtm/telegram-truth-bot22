@@ -2,12 +2,10 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackQueryHandler, CallbackContext
 import copy
 
-# --- Зберігання стану користувачів та постів ---
+# --- Зберігання даних ---
 user_data = {}
 scheduled_posts = []
-posted_messages = {}  # ключ: message_id, значення: {"truth_text":..., "false_text":..., "question":..., "photo":...}
-
-MAX_ALERT_LENGTH = 200  # обмеження Telegram для show_alert
+posted_messages = {}  # ключ: message_id каналу, значення: dict з текстами кнопок
 
 # --- Команди ---
 def start(update: Update, context: CallbackContext):
@@ -25,7 +23,6 @@ def new_post(update: Update, context: CallbackContext):
 def photo_handler(update: Update, context: CallbackContext):
     chat_id = update.message.chat_id
     step = user_data.get(chat_id, {}).get("step")
-
     if step != "photo":
         return
 
@@ -53,15 +50,16 @@ def text_handler(update: Update, context: CallbackContext):
     if step == "question":
         user_data[chat_id]["question"] = text
         user_data[chat_id]["step"] = "truth_text"
-        update.message.reply_text("Введи текст для 'Правда' (спливаюче вікно):")
+        update.message.reply_text("Введи текст для кнопки 'Правда':")
     elif step == "truth_text":
         user_data[chat_id]["truth_text"] = text
         user_data[chat_id]["step"] = "false_text"
-        update.message.reply_text("Введи текст для 'Брехня' (спливаюче вікно):")
+        update.message.reply_text("Введи текст для кнопки 'Брехня':")
     elif step == "false_text":
         user_data[chat_id]["false_text"] = text
         user_data[chat_id]["step"] = None
-        # Кнопки для публікації або відкладання
+
+        # Кнопки для публікації або відкладення
         keyboard = [
             [InlineKeyboardButton("Публікувати зараз", callback_data="publish_now")],
             [InlineKeyboardButton("Відкласти публікацію", callback_data="schedule_post")]
@@ -76,50 +74,9 @@ def photo_or_text_handler(update: Update, context: CallbackContext):
     else:
         text_handler(update, context)
 
-# --- Обробка кнопок ---
-def button(update: Update, context: CallbackContext):
-    query = update.callback_query
-    query.answer()  # завжди відповідаємо callback, щоб зник "loading"
-
-    # --- Кнопки в каналі ---
-    if query.data in ["truth", "false"]:
-        msg_id = query.message.message_id
-        if msg_id in posted_messages:
-            text = posted_messages[msg_id]["truth_text"] if query.data == "truth" else posted_messages[msg_id]["false_text"]
-            # обрізаємо текст до 200 символів
-            if len(text) > MAX_ALERT_LENGTH:
-                text = text[:MAX_ALERT_LENGTH-3] + "..."
-            query.answer(text=text, show_alert=True)
-        else:
-            query.answer(text="✅ Правда" if query.data=="truth" else "❌ Брехня", show_alert=True)
-
-    # --- Кнопки для публікації у приваті ---
-elif query.data == "publish_now":
-    chat_id = query.message.chat.id
-    post_data = user_data.get(chat_id)
-    
-    # Перевіряємо, що всі ключі заповнені
-    required_keys = ["question", "truth_text", "false_text"]
-    if post_data and all(key in post_data for key in required_keys):
-        send_post_to_channel(context, post_data)
-        query.edit_message_text("✅ Пост опубліковано у канал!")
-    else:
-        query.answer("❌ Пост ще не заповнений повністю.", show_alert=True)
-
-elif query.data == "schedule_post":
-    chat_id = query.message.chat.id
-    post_data = user_data.get(chat_id)
-    
-    required_keys = ["question", "truth_text", "false_text"]
-    if post_data and all(key in post_data for key in required_keys):
-        scheduled_posts.append(copy.deepcopy(post_data))
-        query.edit_message_text("⏱ Пост збережено для публікації пізніше!")
-    else:
-        query.answer("❌ Пост ще не заповнений повністю.", show_alert=True)
-
 # --- Відправка поста у канал ---
 def send_post_to_channel(context: CallbackContext, post_data):
-    channel_id = "@checikavo"  # заміни на свій канал або -100...
+    channel_id = "@checikavo"  # твій канал
     keyboard = [
         [
             InlineKeyboardButton("✅ Правда", callback_data="truth"),
@@ -129,18 +86,52 @@ def send_post_to_channel(context: CallbackContext, post_data):
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     if post_data.get("photo"):
-        msg = context.bot.send_photo(chat_id=channel_id, photo=post_data["photo"],
-                                     caption=post_data["question"], reply_markup=reply_markup)
+        msg = context.bot.send_photo(
+            chat_id=channel_id,
+            photo=post_data["photo"],
+            caption=post_data["question"],
+            reply_markup=reply_markup
+        )
     else:
-        msg = context.bot.send_message(chat_id=channel_id, text=post_data["question"], reply_markup=reply_markup)
+        msg = context.bot.send_message(
+            chat_id=channel_id,
+            text=post_data["question"],
+            reply_markup=reply_markup
+        )
 
-    # зберігаємо текст для кнопок
+    # Зберігаємо текст кнопок по message_id
     posted_messages[msg.message_id] = {
-        "truth_text": post_data.get("truth_text", "✅ Правда"),
-        "false_text": post_data.get("false_text", "❌ Брехня"),
-        "question": post_data.get("question"),
-        "photo": post_data.get("photo")
+        "truth_text": post_data["truth_text"],
+        "false_text": post_data["false_text"]
     }
+
+# --- Обробка кнопок ---
+def button(update: Update, context: CallbackContext):
+    query = update.callback_query
+    data_btn = query.data
+
+    # Кнопки в каналі
+    if data_btn in ["truth", "false"]:
+        msg_id = query.message.message_id
+        if msg_id in posted_messages:
+            text = posted_messages[msg_id]["truth_text"] if data_btn == "truth" else posted_messages[msg_id]["false_text"]
+            query.answer(text=text, show_alert=True)
+        else:
+            query.answer(text="✅ Правда" if data_btn=="truth" else "❌ Брехня", show_alert=True)
+
+    # Кнопки в приваті для публікації
+    elif data_btn == "publish_now":
+        chat_id = query.message.chat.id
+        post_data = user_data.get(chat_id)
+        if post_data:
+            send_post_to_channel(context, post_data)
+            query.edit_message_text("✅ Пост опубліковано у канал!")
+    elif data_btn == "schedule_post":
+        chat_id = query.message.chat.id
+        post_data = user_data.get(chat_id)
+        if post_data:
+            scheduled_posts.append(copy.deepcopy(post_data))
+            query.edit_message_text("⏱ Пост збережено для публікації пізніше!")
 
 # --- Відправка відкладених постів ---
 def send_scheduled(update: Update, context: CallbackContext):
@@ -170,4 +161,4 @@ def main():
     updater.idle()
 
 if __name__ == "__main__":
-    main() 
+    main()
