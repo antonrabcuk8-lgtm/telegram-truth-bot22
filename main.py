@@ -94,18 +94,28 @@ def button(update: Update, context: CallbackContext):
             query.answer(text="✅ Правда" if query.data=="truth" else "❌ Брехня", show_alert=True)
 
     # --- Кнопки для публікації у приваті ---
-    elif query.data == "publish_now":
-        chat_id = query.message.chat.id
-        post_data = user_data.get(chat_id)
-        if post_data:
-            send_post_to_channel(context, post_data)
-            query.edit_message_text("✅ Пост опубліковано у канал!")
-    elif query.data == "schedule_post":
-        chat_id = query.message.chat.id
-        post_data = user_data.get(chat_id)
-        if post_data:
-            scheduled_posts.append(copy.deepcopy(post_data))
-            query.edit_message_text("⏱ Пост збережено для публікації пізніше!")
+elif query.data == "publish_now":
+    chat_id = query.message.chat.id
+    post_data = user_data.get(chat_id)
+    
+    # Перевіряємо, що всі ключі заповнені
+    required_keys = ["question", "truth_text", "false_text"]
+    if post_data and all(key in post_data for key in required_keys):
+        send_post_to_channel(context, post_data)
+        query.edit_message_text("✅ Пост опубліковано у канал!")
+    else:
+        query.answer("❌ Пост ще не заповнений повністю.", show_alert=True)
+
+elif query.data == "schedule_post":
+    chat_id = query.message.chat.id
+    post_data = user_data.get(chat_id)
+    
+    required_keys = ["question", "truth_text", "false_text"]
+    if post_data and all(key in post_data for key in required_keys):
+        scheduled_posts.append(copy.deepcopy(post_data))
+        query.edit_message_text("⏱ Пост збережено для публікації пізніше!")
+    else:
+        query.answer("❌ Пост ще не заповнений повністю.", show_alert=True)
 
 # --- Відправка поста у канал ---
 def send_post_to_channel(context: CallbackContext, post_data):
