@@ -120,19 +120,21 @@ def send_post_to_channel(context: CallbackContext, post_data):
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    if post_data.get("photo"):
-        msg = context.bot.send_photo(chat_id=channel_id, photo=post_data["photo"],
-                                     caption=post_data["question"], reply_markup=reply_markup)
-    else:
-        msg = context.bot.send_message(chat_id=channel_id, text=post_data["question"], reply_markup=reply_markup)
+    try:
+        if post_data.get("photo"):
+            msg = context.bot.send_photo(chat_id=channel_id, photo=post_data["photo"],
+                                         caption=post_data["question"], reply_markup=reply_markup)
+        else:
+            msg = context.bot.send_message(chat_id=channel_id, text=post_data["question"], reply_markup=reply_markup)
 
-    posted_messages[msg.message_id] = {
-        "truth_text": post_data.get("truth_text", "✅ Правда"),
-        "false_text": post_data.get("false_text", "❌ Брехня"),
-        "question": post_data.get("question"),
-        "photo": post_data.get("photo")
-    }
-
+        posted_messages[msg.message_id] = {
+            "truth_text": post_data.get("truth_text", "✅ Правда"),
+            "false_text": post_data.get("false_text", "❌ Брехня"),
+            "question": post_data.get("question"),
+            "photo": post_data.get("photo")
+        }
+    except Exception as e:
+        print(f"Помилка при публікації поста: {e}")
 # --- Відправка відкладених постів ---
 def send_scheduled(update: Update, context: CallbackContext):
     if not scheduled_posts:
