@@ -85,6 +85,7 @@ def send_post_to_channel(context: CallbackContext, post_data):
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
+    # Якщо фото, відправляємо фото з підписом
     if post_data.get("photo"):
         msg = context.bot.send_photo(
             chat_id=channel_id,
@@ -99,7 +100,7 @@ def send_post_to_channel(context: CallbackContext, post_data):
             reply_markup=reply_markup
         )
 
-    # Зберігаємо текст кнопок по message_id
+    # Зберігаємо тексти кнопок по message_id
     posted_messages[msg.message_id] = {
         "truth_text": post_data["truth_text"],
         "false_text": post_data["false_text"]
@@ -123,13 +124,13 @@ def button(update: Update, context: CallbackContext):
     elif data_btn == "publish_now":
         chat_id = query.message.chat.id
         post_data = user_data.get(chat_id)
-        if post_data:
+        if post_data and "question" in post_data:
             send_post_to_channel(context, post_data)
             query.edit_message_text("✅ Пост опубліковано у канал!")
     elif data_btn == "schedule_post":
         chat_id = query.message.chat.id
         post_data = user_data.get(chat_id)
-        if post_data:
+        if post_data and "question" in post_data:
             scheduled_posts.append(copy.deepcopy(post_data))
             query.edit_message_text("⏱ Пост збережено для публікації пізніше!")
 
@@ -161,4 +162,4 @@ def main():
     updater.idle()
 
 if __name__ == "__main__":
-    main()  
+    main()
